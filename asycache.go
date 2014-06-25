@@ -19,18 +19,20 @@ type Cache struct {
 }
 
 func MakeCache()(*Cache) {
-	c := &Cache{set_chan: make(chan setChanParam, 100),
+	c := &Cache{entities: make(map[string]*cacheEntity),
+		set_chan: make(chan setChanParam, 100),
 		get_chan: make(chan getChanParam, 100)}
 
 	go func (){
 		for {
 			select {
 			case gcp := <- c.get_chan:
-				v, e := c.entities[gcp.k]
-				if !e {
+				v, ok := c.entities[gcp.k]
+				if !ok {
 					gcp.clbk <- nil
+					break
 				}
-				gcp.clbk <- v
+				gcp.clbk <- v.data
 			case scp := <- c.set_chan:
 				c.entities[scp.k] = &cacheEntity{data: scp.v, last_updated: Now()}
 			}
@@ -45,7 +47,7 @@ func (c *Cache) Set(k string, v interface{}) {
 	return
 }
 
-func (c *Cache) Get(k string, timeout Duration) interface{} {
+func (c *Cache) Get(k string, timeout Duration) (interface{}, bool) {
 	clbk := make(chan interface{})
 	c.get_chan <- getChanParam{k, clbk}
 	ticker := NewTicker(timeout)
@@ -54,9 +56,13 @@ func (c *Cache) Get(k string, timeout Duration) interface{} {
 	for {
 		select {
 		case v = <- clbk:
+			if v != nil {
+				return v, true
+			}
+			return nil, false
 		case <- ticker.C:
-			break
+			return nil, false
 		}
 	}
-	return v
+	return v, false
 }

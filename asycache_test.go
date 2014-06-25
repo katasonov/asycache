@@ -5,12 +5,16 @@ import (
 	"time"
 )
 
-func TestAddAndGet(t *testing.T) {
+func TestICanAddAndGet(t *testing.T) {
 	c := MakeCache()
-	c.Set("a", interface {}(string("hello")))
+	c.Set("a", "hello")
 	c.Set("b", "world")
-	s := c.Get("a", 1*time.Second)
-	if s == nil || s != "a" {
+	v, ok := c.Get("a", 1*time.Second)
+	var s string
+	if ok {
+		s = v.(string)
+	}
+	if s != "hello" {
 		t.Error("Cant get value")
 	}
 }
