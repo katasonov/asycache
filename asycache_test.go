@@ -6,17 +6,21 @@ import (
 )
 
 func TestICanAddAndGet(t *testing.T) {
-	c := MakeCache(1*time.Minute)
+	c := MakeCache(1 * time.Minute)
 	data := map[string]string{"k1": "v1", "k2": "v2", "k3": "v3", "k4": "v4", "k5": "v5"}
-	fchans := make([] chan bool, len(data))
+	fchans := make([]<-chan bool, len(data))
 	i := 0
 	for k, v := range data {
 		fchans[i] = c.Set(k, v, 1*time.Minute)
 		i++
 	}
-	//waiting for setting operation be accomplished
+	//waiting for setting operation be accomplished successfully
 	for i = 0; i < len(fchans); i++ {
-		<- fchans[i]
+		b := <-fchans[i]
+		if b != true {
+			t.Error("Element was not set successfully")
+			return
+		}
 	}
 	for k, v := range data {
 		cv, ok := c.Get(k, 1*time.Second)
@@ -31,9 +35,9 @@ func TestICanAddAndGet(t *testing.T) {
 }
 
 func TestICanAddAndReplaceElement(t *testing.T) {
-	c := MakeCache(1*time.Minute)
-	<- c.Set("a", "hello", 1*time.Minute)
-	<- c.Set("a", "world", 1*time.Minute)
+	c := MakeCache(1 * time.Minute)
+	<-c.Set("a", "hello", 1*time.Minute)
+	<-c.Set("a", "world", 1*time.Minute)
 	v, ok := c.Get("a", 1*time.Second)
 	if !ok {
 		t.Error("Element not found")
@@ -47,10 +51,10 @@ func TestICanAddAndReplaceElement(t *testing.T) {
 
 //test requires some time about 5 seconds to execute
 func TestThatOutdatedItemsWillBeRemovedInTime(t *testing.T) {
-	c := MakeCache(1*time.Second)
-	<- c.Set("a", "hello", 3*time.Second)
-	<- c.Set("b", "world", 10*time.Second)
-	time.Sleep(5*time.Second)
+	c := MakeCache(1 * time.Second)
+	<-c.Set("a", "hello", 3*time.Second)
+	<-c.Set("b", "world", 10*time.Second)
+	time.Sleep(5 * time.Second)
 	_, ok := c.Get("a", 1*time.Second)
 	if ok {
 		t.Error("Element should be deleted")
@@ -60,5 +64,27 @@ func TestThatOutdatedItemsWillBeRemovedInTime(t *testing.T) {
 	if !ok {
 		t.Error("Element should not be deleted")
 		return
+	}
+}
+
+func TestThatICantWriteElementWithEmptyKey(t *testing.T) {
+	c := MakeCache(1 * time.Second)
+	res_ch := c.Set("", "hello", 3*time.Second)
+	//wait some time for sure
+	time.Sleep(1 * time.Second)
+	ok := <-res_ch
+	if ok {
+		t.Error("Element was successfully set")
+	}
+}
+
+func TestThatICanWriteElementToCache(t *testing.T) {
+	c := MakeCache(1 * time.Second)
+	res_ch := c.Set("a", "hello", 3*time.Second)
+	//wait some time for sure
+	time.Sleep(1 * time.Second)
+	ok := <-res_ch
+	if !ok {
+		t.Error("Element was successfully set")
 	}
 }

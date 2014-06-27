@@ -21,12 +21,13 @@ type setChanParam struct {
 	life_time   Duration
 }
 type getChanParam struct {
-	k    string
+	k string
+	//used only to send requested data
 	clbk chan<- interface{}
 }
 
 //Cache type that contains data used by cache
-type Cache struct {
+type cache struct {
 	//storage object for given data to store
 	//stores pointer to entities for greater speed up access
 	entities map[string]*cacheEntity
@@ -39,8 +40,8 @@ type Cache struct {
 // Returns pointer to the new object of type Cache
 // Each cleanup_dt nanoseconds cache service will
 // remove outdated objects from the storage.
-func MakeCache(cleanup_dt Duration) *Cache {
-	c := &Cache{entities: make(map[string]*cacheEntity),
+func MakeCache(cleanup_dt Duration) *cache {
+	c := &cache{entities: make(map[string]*cacheEntity),
 		set_chan: make(chan setChanParam, 100),
 		get_chan: make(chan getChanParam, 100)}
 
@@ -57,8 +58,13 @@ func MakeCache(cleanup_dt Duration) *Cache {
 				gcp.clbk <- v.data
 				c.entities[gcp.k].last_updated = Now()
 			case scp := <-c.set_chan:
-				c.entities[scp.k] = &cacheEntity{data: scp.v, life_time: scp.life_time, last_updated: Now()}
-				scp.finish_chan <- true
+				if len(scp.k) > 0 {
+					c.entities[scp.k] = &cacheEntity{data: scp.v, life_time: scp.life_time, last_updated: Now()}
+					scp.finish_chan <- true
+				} else {
+					scp.finish_chan <- false
+				}
+				close(scp.finish_chan)
 			case <-ticker.C:
 				for k, v := range c.entities {
 					//remove element if it was not updated longer than it's life time
@@ -78,28 +84,26 @@ func MakeCache(cleanup_dt Duration) *Cache {
 //with the same key.
 //dt - life time for the element, if element was not requested
 //during that time it will be removed
-func (c *Cache) Set(k string, v interface{}, dt Duration) chan bool {
-	finish_chan := make(chan bool)
+func (c *cache) Set(k string, v interface{}, dt Duration) <-chan bool {
+	finish_chan := make(chan bool, 2)
 	c.set_chan <- setChanParam{k, v, finish_chan, dt}
 	return finish_chan
 }
 
-func (c *Cache) Get(k string, timeout Duration) (interface{}, bool) {
+func (c *cache) Get(k string, timeout Duration) (interface{}, bool) {
 	clbk := make(chan interface{}, 2)
 	c.get_chan <- getChanParam{k, clbk}
 	ticker := NewTicker(timeout)
 	var v interface{}
 	v = nil
-	for {
-		select {
-		case v = <-clbk:
-			if v != nil {
-				return v, true
-			}
-			return nil, false
-		case <-ticker.C:
-			return nil, false
+	select {
+	case v = <-clbk:
+		if v != nil {
+			return v, true
 		}
+		return nil, false
+	case <-ticker.C:
+		return nil, false
 	}
 	return v, false
 }
